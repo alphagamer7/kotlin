@@ -17,9 +17,11 @@
 package org.jetbrains.kotlin.codegen
 
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.org.objectweb.asm.Type
+import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
 
 enum class ValueKind {
     GENERAL,
@@ -31,9 +33,20 @@ enum class ValueKind {
     DEFAULT_LAMBDA_CAPTURED_PARAMETER
 }
 
+interface BaseExpressionCodegen {
+
+    val frameMap: FrameMap
+
+    val visitor: InstructionAdapter
+
+    fun markStartLineNumber(expression: KtElement)
+
+    fun gen(expression: KtElement): StackValue
+}
+
 abstract class CallGenerator {
 
-    internal class DefaultCallGenerator(private val codegen: ExpressionCodegen) : CallGenerator() {
+    internal class DefaultCallGenerator(private val codegen: BaseExpressionCodegen) : CallGenerator() {
 
         override fun genCallInner(
                 callableMethod: Callable,
@@ -62,20 +75,20 @@ abstract class CallGenerator {
                 parameterType: Type,
                 parameterIndex: Int) {
             val value = codegen.gen(argumentExpression)
-            value.put(parameterType, codegen.v)
+            value.put(parameterType, codegen.visitor)
         }
 
         override fun putCapturedValueOnStack(
                 stackValue: StackValue, valueType: Type, paramIndex: Int) {
-            stackValue.put(stackValue.type, codegen.v)
+            stackValue.put(stackValue.type, codegen.visitor)
         }
 
         override fun putValueIfNeeded(parameterType: Type, value: StackValue, kind: ValueKind, parameterIndex: Int) {
-            value.put(value.type, codegen.v)
+            value.put(value.type, codegen.visitor)
         }
 
         override fun reorderArgumentsIfNeeded(actualArgsWithDeclIndex: List<ArgumentAndDeclIndex>, valueParameterTypes: List<Type>) {
-            val mark = codegen.myFrameMap.mark()
+            val mark = codegen.frameMap.mark()
             val reordered = actualArgsWithDeclIndex.withIndex().dropWhile {
                 it.value.declIndex == it.index
             }
@@ -84,12 +97,12 @@ abstract class CallGenerator {
                 val argumentAndDeclIndex = it.value
                 val type = valueParameterTypes.get(argumentAndDeclIndex.declIndex)
                 val stackValue = StackValue.local(codegen.frameMap.enterTemp(type), type)
-                stackValue.store(StackValue.onStack(type), codegen.v)
+                stackValue.store(StackValue.onStack(type), codegen.visitor)
                 Pair(argumentAndDeclIndex.declIndex, stackValue)
             }.sortedBy {
                 it.first
             }.forEach {
-                it.second.put(valueParameterTypes.get(it.first), codegen.v)
+                it.second.put(valueParameterTypes.get(it.first), codegen.visitor)
             }
             mark.dropTo()
         }
@@ -136,4 +149,8 @@ abstract class CallGenerator {
     abstract fun putHiddenParamsIntoLocals()
 
     abstract fun reorderArgumentsIfNeeded(actualArgsWithDeclIndex: List<ArgumentAndDeclIndex>, valueParameterTypes: List<Type>)
+    
+    
+
+
 }

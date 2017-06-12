@@ -120,7 +120,7 @@ import static org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils.isFun
 import static org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils.isFunctionLiteral;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
-public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> implements LocalLookup {
+public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> implements LocalLookup, BaseExpressionCodegen {
     private final GenerationState state;
     final KotlinTypeMapper typeMapper;
     private final BindingContext bindingContext;
@@ -325,6 +325,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         }
     }
 
+    @Override
     public StackValue gen(KtElement expr) {
         StackValue tempVar = tempVariables.get(expr);
         return tempVar != null ? tempVar : genQualified(StackValue.none(), expr);
@@ -4161,6 +4162,7 @@ The "returned" value of try expression with no finally is either the last expres
         return context.getContextDescriptor().toString();
     }
 
+    @Override
     @NotNull
     public FrameMap getFrameMap() {
         return myFrameMap;
@@ -4213,4 +4215,11 @@ The "returned" value of try expression with no finally is either the last expres
     ) {
         return StackValue.delegate(typeMapper.mapType(variableDescriptor.getType()), delegateValue, metadataValue, variableDescriptor, this);
     }
+
+    @NotNull
+    @Override
+    public InstructionAdapter getVisitor() {
+        return v;
+    }
+
 }

@@ -22,8 +22,12 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.codegen.*
 import org.jetbrains.kotlin.codegen.AsmUtil.*
 import org.jetbrains.kotlin.codegen.StackValue.*
+import org.jetbrains.kotlin.codegen.inline.InlineCodegen
+import org.jetbrains.kotlin.codegen.inline.InlineCodegenForDefaultBody
+import org.jetbrains.kotlin.codegen.inline.TypeParameterMappings
 import org.jetbrains.kotlin.codegen.intrinsics.JavaClassProperty
 import org.jetbrains.kotlin.codegen.pseudoInsns.fixStackAndJump
+import org.jetbrains.kotlin.codegen.signature.BothSignatureWriter
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.impl.TypeAliasConstructorDescriptor
 import org.jetbrains.kotlin.ir.IrElement
@@ -34,12 +38,17 @@ import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.util.render
 import org.jetbrains.kotlin.ir.visitors.IrElementVisitor
+import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasDefaultValue
+import org.jetbrains.kotlin.resolve.inline.InlineUtil
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes.JAVA_THROWABLE_TYPE
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes.OBJECT_TYPE
 import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor
 import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.typesApproximation.approximateCapturedTypes
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 import org.jetbrains.org.objectweb.asm.Label
 import org.jetbrains.org.objectweb.asm.Type
@@ -897,6 +906,61 @@ class ExpressionCodegen(
 
     private val CallableDescriptor.asmType: Type
         get() = typeMapper.mapType(this)
+
+
+    private fun getOrCreateCallGenerator(
+            descriptor: CallableDescriptor,
+            callElement: KtElement?,
+            typeParameterMappings: TypeParameterMappings?,
+            isDefaultCompilation: Boolean
+    ): CallGenerator {
+        if (callElement == null) return defaultCallGenerator
+
+        // We should inline callable containing reified type parameters even if inline is disabled
+        // because they may contain something to reify and straight call will probably fail at runtime
+        val isInline = (!state.isInlineDisabled || InlineUtil.containsReifiedTypeParameters(descriptor)) && (InlineUtil.isInline(descriptor) || InlineUtil.isArrayConstructorWithLambda(descriptor))
+
+        if (!isInline) return defaultCallGenerator
+
+        val original = unwrapInitialSignatureDescriptor(DescriptorUtils.unwrapFakeOverride(descriptor.original as FunctionDescriptor))
+        if (isDefaultCompilation) {
+            return InlineCodegenForDefaultBody(original, this, state)
+        }
+        else {
+            return InlineCodegen(this, state, original, callElement, typeParameterMappings!!)
+        }
+    }
+
+    internal fun getOrCreateCallGenerator(resolvedCall: ResolvedCall<*>, descriptor: CallableDescriptor): CallGenerator {
+        val typeArguments = getTypeArgumentsForResolvedCall(resolvedCall, descriptor)
+
+        val mappings = TypeParameterMappings()
+        for (entry in typeArguments.entries) {
+            val key = entry.key
+            val type = entry.value
+
+            val isReified = key.isReified() || InlineUtil.isArrayConstructorWithLambda(resolvedCall.resultingDescriptor)
+
+            val typeParameterAndReificationArgument = extractReificationArgument(type)
+            if (typeParameterAndReificationArgument == null) {
+                val approximatedType = approximateCapturedTypes(entry.value).upper
+                // type is not generic
+                val signatureWriter = BothSignatureWriter(BothSignatureWriter.Mode.TYPE)
+                val asmType = typeMapper.mapTypeParameter(approximatedType, signatureWriter)
+
+                mappings.addParameterMappingToType(
+                        key.getName().getIdentifier(), approximatedType, asmType, signatureWriter.toString(), isReified
+                )
+            }
+            else {
+                mappings.addParameterMappingForFurtherReification(
+                        key.getName().getIdentifier(), type, typeParameterAndReificationArgument!!.second, isReified
+                )
+            }
+        }
+
+        return getOrCreateCallGenerator(descriptor, resolvedCall.call.callElement, mappings, false)
+    }
 }
 
 private class DefaultArg(val index: Int)
