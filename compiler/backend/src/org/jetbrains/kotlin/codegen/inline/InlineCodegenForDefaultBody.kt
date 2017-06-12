@@ -33,7 +33,8 @@ import org.jetbrains.org.objectweb.asm.tree.MethodNode
 class InlineCodegenForDefaultBody(
         function: FunctionDescriptor,
         codegen: ExpressionCodegen,
-        val state: GenerationState
+        val state: GenerationState,
+        private val sourceCompilerForInline: SourceCompilerForInline
 ) : CallGenerator() {
 
     private val sourceMapper: SourceMapper = codegen.parentCodegen.orCreateSourceMapper
@@ -65,7 +66,7 @@ class InlineCodegenForDefaultBody(
     }
 
     override fun genCallInner(callableMethod: Callable, resolvedCall: ResolvedCall<*>?, callDefault: Boolean, codegen: BaseExpressionCodegen) {
-        val nodeAndSmap = InlineCodegen.createMethodNode(functionDescriptor, jvmSignature, codegen, context, callDefault, null, state)
+        val nodeAndSmap = InlineCodegen.createMethodNode(functionDescriptor, jvmSignature, codegen, context, callDefault, null, state, sourceCompilerForInline)
         val childSourceMapper = InlineCodegen.createNestedSourceMapper(nodeAndSmap, sourceMapper)
 
         val node = nodeAndSmap.node
