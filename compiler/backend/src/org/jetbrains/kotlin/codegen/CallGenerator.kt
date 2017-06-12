@@ -16,10 +16,14 @@
 
 package org.jetbrains.kotlin.codegen
 
+import org.jetbrains.kotlin.codegen.inline.ReifiedTypeInliner
+import org.jetbrains.kotlin.codegen.inline.ReifiedTypeParametersUsages
+import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.org.objectweb.asm.Type
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
 
@@ -42,6 +46,10 @@ interface BaseExpressionCodegen {
     fun markStartLineNumber(expression: KtElement)
 
     fun gen(expression: KtElement): StackValue
+
+    fun consumeReifiedOperationMarker(typeParameterDescriptor: TypeParameterDescriptor)
+
+    fun propagateChildReifiedTypeParametersUsages(reifiedTypeParametersUsages: ReifiedTypeParametersUsages)
 }
 
 abstract class CallGenerator {
@@ -52,12 +60,12 @@ abstract class CallGenerator {
                 callableMethod: Callable,
                 resolvedCall: ResolvedCall<*>?,
                 callDefault: Boolean,
-                codegen: ExpressionCodegen) {
+                codegen: BaseExpressionCodegen) {
             if (!callDefault) {
-                callableMethod.genInvokeInstruction(codegen.v)
+                callableMethod.genInvokeInstruction(codegen.visitor)
             }
             else {
-                (callableMethod as CallableMethod).genInvokeDefaultInstruction(codegen.v)
+                (callableMethod as CallableMethod).genInvokeDefaultInstruction(codegen.visitor)
             }
         }
 
@@ -119,7 +127,7 @@ abstract class CallGenerator {
         genCallInner(callableMethod, resolvedCall, callDefault, codegen)
     }
 
-    abstract fun genCallInner(callableMethod: Callable, resolvedCall: ResolvedCall<*>?, callDefault: Boolean, codegen: ExpressionCodegen)
+    abstract fun genCallInner(callableMethod: Callable, resolvedCall: ResolvedCall<*>?, callDefault: Boolean, codegen: BaseExpressionCodegen)
 
     abstract fun genValueAndPut(
             valueParameterDescriptor: ValueParameterDescriptor,

@@ -4019,19 +4019,17 @@ The "returned" value of try expression with no finally is either the last expres
     public void putReifiedOperationMarkerIfTypeIsReifiedParameter(
             @NotNull KotlinType type, @NotNull ReifiedTypeInliner.OperationKind operationKind
     ) {
-        putReifiedOperationMarkerIfTypeIsReifiedParameter(type, operationKind, v);
+        putReifiedOperationMarkerIfTypeIsReifiedParameter(type, operationKind, v, this);
     }
 
-    public void putReifiedOperationMarkerIfTypeIsReifiedParameter(
-            @NotNull KotlinType type, @NotNull ReifiedTypeInliner.OperationKind operationKind, @NotNull InstructionAdapter v
+    public static void putReifiedOperationMarkerIfTypeIsReifiedParameter(
+            @NotNull KotlinType type, @NotNull ReifiedTypeInliner.OperationKind operationKind, @NotNull InstructionAdapter v,
+            @NotNull BaseExpressionCodegen codegen
     ) {
         Pair<TypeParameterDescriptor, ReificationArgument> typeParameterAndReificationArgument = extractReificationArgument(type);
         if (typeParameterAndReificationArgument != null && typeParameterAndReificationArgument.getFirst().isReified()) {
             TypeParameterDescriptor typeParameterDescriptor = typeParameterAndReificationArgument.getFirst();
-            if (typeParameterDescriptor.getContainingDeclaration() != context.getContextDescriptor()) {
-                parentCodegen.getReifiedTypeParametersUsages().
-                        addUsedReifiedParameter(typeParameterDescriptor.getName().asString());
-            }
+            codegen.consumeReifiedOperationMarker(typeParameterDescriptor);
             v.iconst(operationKind.getId());
             v.visitLdcInsn(typeParameterAndReificationArgument.getSecond().asString());
             v.invokestatic(
@@ -4041,6 +4039,7 @@ The "returned" value of try expression with no finally is either the last expres
         }
     }
 
+    @Override
     public void propagateChildReifiedTypeParametersUsages(@NotNull ReifiedTypeParametersUsages usages) {
         parentCodegen.getReifiedTypeParametersUsages().propagateChildUsagesWithinContext(usages, context);
     }
@@ -4222,4 +4221,11 @@ The "returned" value of try expression with no finally is either the last expres
         return v;
     }
 
+    @Override
+    public void consumeReifiedOperationMarker(@NotNull TypeParameterDescriptor typeParameterDescriptor) {
+        if (typeParameterDescriptor.getContainingDeclaration() != context.getContextDescriptor()) {
+            parentCodegen.getReifiedTypeParametersUsages().
+                    addUsedReifiedParameter(typeParameterDescriptor.getName().asString());
+        }
+    }
 }

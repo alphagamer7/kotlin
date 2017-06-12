@@ -131,7 +131,7 @@ class InlineCodegen(
             callableMethod: Callable,
             resolvedCall: ResolvedCall<*>?,
             callDefault: Boolean,
-            codegen: ExpressionCodegen
+            codegen: BaseExpressionCodegen
     ) {
         if (!state.inlineCycleReporter.enterIntoInlining(resolvedCall)) {
             generateStub(resolvedCall, codegen)
@@ -140,7 +140,7 @@ class InlineCodegen(
 
         var nodeAndSmap: SMAPAndMethodNode? = null
         try {
-            nodeAndSmap = createMethodNode(functionDescriptor, jvmSignature, codegen, context, callDefault, resolvedCall)
+            nodeAndSmap = createMethodNode(functionDescriptor, jvmSignature, codegen, context, callDefault, resolvedCall, state)
             endCall(inlineCall(nodeAndSmap, callDefault))
         }
         catch (e: CompilationException) {
@@ -172,11 +172,11 @@ class InlineCodegen(
         )
     }
 
-    private fun generateStub(resolvedCall: ResolvedCall<*>?, codegen: ExpressionCodegen) {
+    private fun generateStub(resolvedCall: ResolvedCall<*>?, codegen: BaseExpressionCodegen) {
         leaveTemps()
         assert(resolvedCall != null)
         val message = "Call is part of inline cycle: " + resolvedCall!!.call.callElement.text
-        AsmUtil.genThrow(codegen.v, "java/lang/UnsupportedOperationException", message)
+        AsmUtil.genThrow(codegen.visitor, "java/lang/UnsupportedOperationException", message)
     }
 
     private fun endCall(result: InlineResult) {
@@ -278,7 +278,7 @@ class InlineCodegen(
 
     private fun generateClosuresBodies() {
         for (info in expressionMap.values) {
-            info.generateLambdaBody(codegen, reifiedTypeInliner)
+            info.generateLambdaBody(codegen, reifiedTypeInliner, state)
         }
     }
 
@@ -614,10 +614,11 @@ class InlineCodegen(
         internal fun createMethodNode(
                 functionDescriptor: FunctionDescriptor,
                 jvmSignature: JvmMethodSignature,
-                codegen: ExpressionCodegen,
+                codegen: BaseExpressionCodegen,
                 context: CodegenContext<*>,
                 callDefault: Boolean,
-                resolvedCall: ResolvedCall<*>?
+                resolvedCall: ResolvedCall<*>?,
+                state: GenerationState
         ): SMAPAndMethodNode {
             if (isSpecialEnumMethod(functionDescriptor)) {
                 assert(resolvedCall != null) { "Resolved call for $functionDescriptor should be not null" }
@@ -628,20 +629,19 @@ class InlineCodegen(
                         codegen,
                         functionDescriptor.name.asString(),
                         arguments.keys.iterator().next().defaultType,
-                        codegen.state.typeMapper
+                        state.typeMapper
                 )
                 return SMAPAndMethodNode(node, SMAPParser.parseOrCreateDefault(null, null, "fake", -1, -1))
             }
             else if (functionDescriptor.isBuiltInSuspendCoroutineOrReturnInJvm()) {
                 return SMAPAndMethodNode(
                         createMethodNodeForSuspendCoroutineOrReturn(
-                                functionDescriptor, codegen.state.typeMapper
+                                functionDescriptor, state.typeMapper
                         ),
                         SMAPParser.parseOrCreateDefault(null, null, "fake", -1, -1)
                 )
             }
 
-            val state = codegen.state
             val asmMethod = if (callDefault)
                 state.typeMapper.mapDefaultMethod(functionDescriptor, context.contextKind)
             else
@@ -713,7 +713,7 @@ class InlineCodegen(
         private fun doCreateMethodNodeFromSource(
                 callableDescriptor: FunctionDescriptor,
                 jvmSignature: JvmMethodSignature,
-                codegen: ExpressionCodegen,
+                codegen: BaseExpressionCodegen,
                 context: CodegenContext<*>,
                 callDefault: Boolean,
                 state: GenerationState,
@@ -755,7 +755,7 @@ class InlineCodegen(
                 smap = createSMAPWithDefaultMapping(inliningFunction, parentCodegen.orCreateSourceMapper.resultMappings)
             }
             else {
-                smap = generateMethodBody(maxCalcAdapter, callableDescriptor, methodContext, inliningFunction!!, jvmSignature, codegen, null)
+                smap = generateMethodBody(maxCalcAdapter, callableDescriptor, methodContext, inliningFunction!!, jvmSignature, codegen, null, state)
             }
             maxCalcAdapter.visitMaxs(-1, -1)
             maxCalcAdapter.visitEnd()
@@ -798,11 +798,11 @@ class InlineCodegen(
                 context: MethodContext,
                 expression: KtExpression,
                 jvmMethodSignature: JvmMethodSignature,
-                codegen: ExpressionCodegen,
-                lambdaInfo: ExpressionLambda?
+                codegen: BaseExpressionCodegen,
+                lambdaInfo: ExpressionLambda?,
+                state: GenerationState
         ): SMAP {
             val isLambda = lambdaInfo != null
-            val state = codegen.state
 
             // Wrapping for preventing marking actual parent codegen as containing reified markers
             val parentCodegen = FakeMemberCodegen(
@@ -817,8 +817,8 @@ class InlineCodegen(
             if (expression is KtCallableReferenceExpression) {
                 val callableReferenceExpression = expression
                 val receiverExpression = callableReferenceExpression.receiverExpression
-                val receiverType = if (receiverExpression != null && codegen.bindingContext.getType(receiverExpression) != null)
-                    codegen.state.typeMapper.mapType(codegen.bindingContext.getType(receiverExpression)!!)
+                val receiverType = if (receiverExpression != null && state.bindingContext.getType(receiverExpression) != null)
+                    state.typeMapper.mapType(state.bindingContext.getType(receiverExpression)!!)
                 else
                     null
 
@@ -834,7 +834,7 @@ class InlineCodegen(
                             state,
                             descriptor,
                             callableReferenceExpression.callableReference
-                                    .getResolvedCallWithAssert(codegen.bindingContext),
+                                    .getResolvedCallWithAssert(state.bindingContext),
                             receiverType, null,
                             true
                     )

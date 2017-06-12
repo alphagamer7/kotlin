@@ -64,8 +64,8 @@ class InlineCodegenForDefaultBody(
         codegen.v.visitLabel(methodStartLabel)
     }
 
-    override fun genCallInner(callableMethod: Callable, resolvedCall: ResolvedCall<*>?, callDefault: Boolean, codegen: ExpressionCodegen) {
-        val nodeAndSmap = InlineCodegen.createMethodNode(functionDescriptor, jvmSignature, codegen, context, callDefault, null)
+    override fun genCallInner(callableMethod: Callable, resolvedCall: ResolvedCall<*>?, callDefault: Boolean, codegen: BaseExpressionCodegen) {
+        val nodeAndSmap = InlineCodegen.createMethodNode(functionDescriptor, jvmSignature, codegen, context, callDefault, null, state)
         val childSourceMapper = InlineCodegen.createNestedSourceMapper(nodeAndSmap, sourceMapper)
 
         val node = nodeAndSmap.node
@@ -84,7 +84,7 @@ class InlineCodegenForDefaultBody(
             }
         })
 
-        transformedMethod.accept(MethodBodyVisitor(codegen.v))
+        transformedMethod.accept(MethodBodyVisitor(codegen.visitor))
     }
 
     override fun genValueAndPut(valueParameterDescriptor: ValueParameterDescriptor, argumentExpression: KtExpression, parameterType: Type, parameterIndex: Int) {

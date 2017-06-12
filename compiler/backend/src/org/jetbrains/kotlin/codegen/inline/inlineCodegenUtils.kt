@@ -19,6 +19,7 @@ package org.jetbrains.kotlin.codegen.inline
 import com.intellij.openapi.vfs.VirtualFile
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.codegen.AsmUtil
+import org.jetbrains.kotlin.codegen.BaseExpressionCodegen
 import org.jetbrains.kotlin.codegen.ExpressionCodegen
 import org.jetbrains.kotlin.codegen.JvmCodegenUtil
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding
@@ -509,7 +510,7 @@ fun isSpecialEnumMethod(functionDescriptor: FunctionDescriptor): Boolean {
 }
 
 fun createSpecialEnumMethodBody(
-        codegen: ExpressionCodegen,
+        codegen: BaseExpressionCodegen,
         name: String,
         type: KotlinType,
         typeMapper: KotlinTypeMapper
@@ -518,7 +519,7 @@ fun createSpecialEnumMethodBody(
     val invokeType = typeMapper.mapType(type)
     val desc = getSpecialEnumFunDescriptor(invokeType, isValueOf)
     val node = MethodNode(API, Opcodes.ACC_STATIC, "fake", desc, null, null)
-    codegen.putReifiedOperationMarkerIfTypeIsReifiedParameter(type, ReifiedTypeInliner.OperationKind.ENUM_REIFIED, InstructionAdapter(node))
+    ExpressionCodegen.putReifiedOperationMarkerIfTypeIsReifiedParameter(type, ReifiedTypeInliner.OperationKind.ENUM_REIFIED, InstructionAdapter(node), codegen)
     if (isValueOf) {
         node.visitInsn(Opcodes.ACONST_NULL)
         node.visitVarInsn(Opcodes.ALOAD, 0)
