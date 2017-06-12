@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.idea.formatter
 
 import com.intellij.application.options.IndentOptionsEditor
-import com.intellij.application.options.SmartIndentOptionsEditor
 import com.intellij.psi.codeStyle.CodeStyleSettingsCustomizable
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings
 import com.intellij.psi.codeStyle.LanguageCodeStyleSettingsProvider
@@ -108,6 +107,12 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
                        }
                        private fun <T>foo2(): Int where T : List<T> {
                            return 0
+                       }
+
+                       fun multilineMethod(
+                           foo: String,
+                           bar: String
+                       ) {
                        }
                    }
                    class AnotherClass<T : Any> : Some()
@@ -207,7 +212,7 @@ class KotlinLanguageCodeStyleSettingsProvider : LanguageCodeStyleSettingsProvide
         }
     }
 
-    override fun getIndentOptionsEditor(): IndentOptionsEditor = SmartIndentOptionsEditor()
+    override fun getIndentOptionsEditor(): IndentOptionsEditor = KotlinIndentOptionsEditor()
 
     override fun getDefaultCommonSettings(): CommonCodeStyleSettings =
         CommonCodeStyleSettings(language).apply {
